@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Engine com Órbitas Melhoradas</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            max-width: 300px;
+        }
+        .control-panel {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 5px;
+            color: black;
+            max-width: 300px;
+        }
+        .control-panel.active {
+            display: flex;
+        }
+        .control-panel label {
+            display: block;
+        }
+        .control-panel img {
+            max-width: 100%;
+            border-radius: 50%;
+        }
+        .icon {
+            cursor: pointer;
+            font-size: 24px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #eee;
+            border-radius: 50%;
+            text-align: center;
+        }
+        #zoomControls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-panel input[type="range"], .control-panel input[type="color"], .control-panel input[type="file"] {
+            width: 100%;
+        }
+        .control-panel button {
+            margin-top: 10px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        .control-panel button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="space"></canvas>
+    <div class="controls">
+        <select id="objectType">
+            <option value="none">Nenhum</option>
+            <option value="sun">🌞 Sol</option>
+            <option value="venus">🌕 Vênus</option>
+            <option value="earth">🌍 Terra</option>
+            <option value="moon">🌙 Lua</option>
+            <option value="mars">🔴 Marte</option>
+            <option value="jupiter">🪐 Júpiter</option>
+            <option value="pluto">❄️ Plutão</option>
+            <option value="saturn">🪐 Saturno</option>
+            <option value="blackhole">⚫ Buraco Negro</option>
+        </select>
+        <div class="icon" data-panel="speedPanel">⚡</div>
+        <div class="icon" data-panel="sizePanel">📏</div>
+        <div class="icon" data-panel="blackholePanel">🕳️</div>
+        <div class="icon" data-panel="zoomPanel">🔍</div>
+        <div class="icon" data-panel="customizePanel">⚙️</div>
+        <div class="icon" data-panel="timePanel">⏳</div>
+        <button id="clearButton">Limpar</button>
+    </div>
+    <div class="control-panel" id="speedPanel">
+        <label>
+            Velocidade da Simulação:
+            <input type="range" id="speedControl" min="1" max="10" value="5">
+        </label>
+    </div>
+    <div class="control-panel" id="sizePanel">
+        <label>
+            Tamanho do Planeta:
+            <input type="range" id="sizeControl" min="5" max="20" value="10">
+        </label>
+    </div>
+    <div class="control-panel" id="blackholePanel">
+        <label>
+            Tamanho do Buraco Negro:
+            <input type="range" id="blackholeSizeControl" min="10" max="50" value="25">
+        </label>
+        <label>
+            Força do Buraco Negro:
+            <input type="range" id="blackholeStrengthControl" min="1" max="10" value="5">
+        </label>
+    </div>
+    <div class="control-panel" id="zoomPanel">
+        <div id="zoomControls">
+            <label>
+                Zoom:
+                <input type="range" id="zoomControl" min="0.5" max="2" step="0.1" value="1">
+            </label>
+        </div>
+    </div>
+    <div class="control-panel" id="customizePanel">
+        <label>
+            Imagem do Planeta:
+            <input type="file" id="imageUpload" accept="image/*">
+        </label>
+        <label>
+            Tamanho:
+            <input type="range" id="customSizeControl" min="5" max="20" value="10">
+        </label>
+        <label>
+            Força Gravitacional:
+            <input type="range" id="gravityControl" min="1" max="10" value="5">
+        </label>
+        <label>
+            Temperatura:
+            <input type="range" id="temperatureControl" min="-100" max="100" value="20">
+        </label>
+        <label>
+            Tipo:
+            <select id="objectTypeCustom">
+                <option value="planet">Planeta</option>
+                <option value="star">Estrela</option>
+            </select>
+        </label>
+        <button id="createCustomPlanet">Criar</button>
+    </div>
+    <div class="control-panel" id="timePanel">
+        <label>
+            <input type="checkbox" id="pauseTime">
+            Parar o Tempo
+        </label>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('space');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let zoom = 1;
+        let offsetX = 0, offsetY = 0;
+        const stars = Array(100).fill().map(() => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 2
+        }));
+        const planets = [];
+        const blackHoles = [];
+        let simulationSpeed = 5;
+        let timePaused = false;
+
+        function drawStars() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            stars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x * zoom + offsetX, star.y * zoom + offsetY, star.size * zoom, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function drawPlanets() {
+            planets.forEach(planet => {
+                if (planet.orbitingPlanet) {
+                    planet.angle += planet.speed / simulationSpeed;
+                    planet.x = planet.orbitingPlanet.x + Math.cos(planet.angle) * planet.orbitRadius;
+                    planet.y = planet.orbitingPlanet.y + Math.sin(planet.angle) * planet.orbitRadius;
+
+                    ctx.beginPath();
+                    ctx.arc(planet.orbitingPlanet.x, planet.orbitingPlanet.y, planet.orbitRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.stroke();
+                }
+
+                drawPlanetWithGlow(planet);
+            });
+        }
+
+        function drawPlanetWithGlow(planet) {
+            const gradient = ctx.createRadialGradient(planet.x * zoom + offsetX, planet.y * zoom + offsetY, planet.size / 2 * zoom, planet.x * zoom + offsetX, planet.y * zoom + offsetY, planet.size * zoom);
+            gradient.addColorStop(0, `rgba(${planet.color}, 0.8)`);
+            gradient.addColorStop(1, `rgba(${planet.color}, 0)`);
+            ctx.beginPath();
+            ctx.arc(planet.x * zoom + offsetX, planet.y * zoom + offsetY, planet.size * zoom, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        function drawBlackHoles() {
+            blackHoles.forEach(blackHole => {
+                ctx.beginPath();
+                ctx.arc(blackHole.x * zoom + offsetX, blackHole.y * zoom + offsetY, blackHole.size * zoom, 0, Math.PI * 2);
+                ctx.fillStyle = 'black';
+                ctx.fill();
+            });
+        }
+
+        function applyGravity() {
+            planets.forEach((planet, i) => {
+                if (planet.isStar) return; // Skip gravity application for stars
+
+                planets.forEach((otherPlanet, j) => {
+                    if (i !== j && !otherPlanet.isStar) {
+                        const dx = otherPlanet.x - planet.x;
+                        const dy = otherPlanet.y - planet.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const force = (otherPlanet.size * planet.size) / (distance * distance);
+                        planet.x += force * dx / distance;
+                        planet.y += force * dy / distance;
+                    }
+                });
+
+                blackHoles.forEach(blackHole => {
+                    const dx = blackHole.x - planet.x;
+                    const dy = blackHole.y - planet.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const force = (blackHole.size * planet.size) / (distance * distance);
+                    planet.x += force * dx / distance;
+                    planet.y += force * dy / distance;
+                });
+            });
+
+            // Apply gravity for black holes on planets
+            blackHoles.forEach(blackHole => {
+                planets.forEach(planet => {
+                    if (!planet.isStar) {
+                        const dx = blackHole.x - planet.x;
+                        const dy = blackHole.y - planet.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const force = (blackHole.size * planet.size) / (distance * distance);
+                        planet.x += force * dx / distance;
+                        planet.y += force * dy / distance;
+                    }
+                });
+            });
+        }
+
+        function interactBlackHoles() {
+            blackHoles.forEach(blackHole => {
+                planets.forEach((planet, index) => {
+                    const dx = blackHole.x - planet.x;
+                    const dy = blackHole.y - planet.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < blackHole.size * blackHole.strength) {
+                        planet.x += (blackHole.x - planet.x) * 0.01;
+                        planet.y += (blackHole.y - planet.y) * 0.01;
+
+                        if (distance < blackHole.size * blackHole.strength * 0.5) {
+                            planets.splice(index, 1);
+                        }
+                    }
+                });
+            });
+        }
+
+        function findClosestPlanet(x, y) {
+            let closestPlanet = null;
+            let minDistance = Infinity;
+
+            planets.forEach(planet => {
+                const distance = Math.sqrt((planet.x - x) ** 2 + (planet.y - y) ** 2);
+                if (distance < minDistance) {
+                    closestPlanet = planet;
+                    minDistance = distance;
+                }
+            });
+
+            return closestPlanet;
+        }
+
+        function addObject(x, y) {
+            const objectType = document.getElementById('objectType').value;
+            let size, color, speed, orbitingPlanet;
+
+            switch (objectType) {
+                case 'sun':
+                    size = 25;
+                    color = '255, 255, 0'; // yellow
+                    speed = 0.005;
+                    break;
+                case 'venus':
+                    size = 8;
+                    color = '255, 165, 0'; // orange
+                    speed = 0.03;
+                    break;
+                case 'earth':
+                    size = 10;
+                    color = '0, 0, 255'; // blue
+                    speed = 0.02;
+                    break;
+                case 'moon':
+                    size = 5;
+                    color = '128, 128, 128'; // gray
+                    speed = 0.04;
+                    break;
+                case 'mars':
+                    size = 7;
+                    color = '255, 0, 0'; // red
+                    speed = 0.015;
+                    break;
+                case 'jupiter':
+                    size = 20;
+                    color = '139, 69, 19'; // brown
+                    speed = 0.01;
+                    break;
+                case 'pluto':
+                    size = 5;
+                    color = '211, 211, 211'; // lightgray
+                    speed = 0.05;
+                    break;
+                case 'saturn':
+                    size = 18;
+                    color = '255, 215, 0'; // goldenrod
+                    speed = 0.008;
+                    break;
+                case 'blackhole':
+                    blackHoles.push({ x, y, size: 25, strength: 5 });
+                    return;
+                case 'none':
+                    return; // No object added
+                default:
+                    size = 10;
+                    color = '255, 255, 255'; // white
+                    speed = 0.01;
+            }
+
+            orbitingPlanet = findClosestPlanet(x, y);
+
+            planets.push({
+                x,
+                y,
+                size,
+                color,
+                speed,
+                orbitRadius: orbitingPlanet ? Math.sqrt((orbitingPlanet.x - x) ** 2 + (orbitingPlanet.y - y) ** 2) : 0,
+                angle: 0,
+                orbitingPlanet
+            });
+        }
+
+        function addCustomPlanet(imageURL, size, gravity, temperature, isStar) {
+            planets.push({
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                size,
+                color: '255, 255, 255', // white for custom planets
+                image: imageURL,
+                gravity,
+                temperature,
+                isStar
+            });
+
+            // Update the objectType selector with the new custom planet
+            const select = document.getElementById('objectType');
+            const option = document.createElement('option');
+            option.value = `custom_${planets.length - 1}`;
+            option.textContent = `Planeta Personalizado ${planets.length - 1}`;
+            select.appendChild(option);
+        }
+
+        function clearAllObjects() {
+            planets.length = 0;
+            blackHoles.length = 0;
+        }
+
+        canvas.addEventListener('click', (e) => {
+            if (!timePaused) {
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - offsetX) / zoom;
+                const y = (e.clientY - rect.top - offsetY) / zoom;
+                addObject(x, y);
+            }
+        });
+
+        document.querySelectorAll('.icon').forEach(icon => {
+            icon.addEventListener('click', () => {
+                const panelId = icon.getAttribute('data-panel');
+                const panel = document.getElementById(panelId);
+                if (panel.classList.contains('active')) {
+                    panel.classList.remove('active');
+                } else {
+                    document.querySelectorAll('.control-panel').forEach(p => p.classList.remove('active'));
+                    panel.classList.add('active');
+                }
+            });
+        });
+
+        document.getElementById('speedControl').addEventListener('input', (e) => {
+            simulationSpeed = parseInt(e.target.value);
+        });
+
+        document.getElementById('blackholeSizeControl').addEventListener('input', (e) => {
+            if (blackHoles.length > 0) {
+                blackHoles.forEach(blackHole => blackHole.size = parseInt(e.target.value));
+            }
+        });
+
+        document.getElementById('blackholeStrengthControl').addEventListener('input', (e) => {
+            if (blackHoles.length > 0) {
+                blackHoles.forEach(blackHole => blackHole.strength = parseInt(e.target.value));
+            }
+        });
+
+        document.getElementById('zoomControl').addEventListener('input', (e) => {
+            zoom = parseFloat(e.target.value);
+            canvas.style.transform = `scale(${zoom})`;
+        });
+
+        document.getElementById('imageUpload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const imageURL = event.target.result;
+                const size = parseInt(document.getElementById('customSizeControl').value);
+                const gravity = parseInt(document.getElementById('gravityControl').value);
+                const temperature = parseInt(document.getElementById('temperatureControl').value);
+                const isStar = document.getElementById('objectTypeCustom').value === 'star';
+                addCustomPlanet(imageURL, size, gravity, temperature, isStar);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('createCustomPlanet').addEventListener('click', () => {
+            const imageURL = document.getElementById('imageUpload').files[0] ? URL.createObjectURL(document.getElementById('imageUpload').files[0]) : '';
+            const size = parseInt(document.getElementById('customSizeControl').value);
+            const gravity = parseInt(document.getElementById('gravityControl').value);
+            const temperature = parseInt(document.getElementById('temperatureControl').value);
+            const isStar = document.getElementById('objectTypeCustom').value === 'star';
+            addCustomPlanet(imageURL, size, gravity, temperature, isStar);
+        });
+
+        document.getElementById('pauseTime').addEventListener('change', (e) => {
+            timePaused = e.target.checked;
+        });
+
+        document.getElementById('clearButton').addEventListener('click', () => {
+            clearAllObjects();
+        });
+
+        function animate() {
+            if (!timePaused) {
+                drawStars();
+                drawPlanets();
+                drawBlackHoles();
+                applyGravity();
+                interactBlackHoles();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
